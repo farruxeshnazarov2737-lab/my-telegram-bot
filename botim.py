@@ -37,7 +37,7 @@ Thread(target=run, daemon=True).start()
 # KONFIGURATSIYA (O'zgaruvchilar Render muhitidan o'qiladi)
 API_ID = int(os.environ.get("API_ID", "32413839"))
 API_HASH = os.environ.get("API_HASH", "067ca91addf879c1ea548bc37d5d9b98")
-BOT_TOKEN = os.environ.get("8758962250:AAE6L_bzNYzmvneL3AQF7oRRGSYnPE3T1TY")
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
 ADMIN_ID = int(os.environ.get("ADMIN_ID", "6377932858"))
 
 TARGET_USER = "eshnazarov"
