@@ -35,10 +35,11 @@ def run():
 Thread(target=run, daemon=True).start()
 
 # KONFIGURATSIYA (O'zgaruvchilar Render muhitidan o'qiladi)
-API_ID = int(os.environ.get("API_ID", "32413839"))
-API_HASH = os.environ.get("API_HASH", "067ca91addf879c1ea548bc37d5d9b98")
+API_ID = int(os.environ.get("API_ID", "0"))
+API_HASH = os.environ.get("API_HASH", "")
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
-ADMIN_ID = int(os.environ.get("ADMIN_ID", "6377932858"))
+ADMIN_ID = int(os.environ.get("ADMIN_ID", "0"))
+
 
 TARGET_USER = "eshnazarov"
 STARS_CHANNEL_USERNAME = "stars_null"
