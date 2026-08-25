@@ -13,7 +13,7 @@ from telethon.errors import SessionPasswordNeededError, PhoneCodeInvalidError, P
 
 API_ID = 32413839
 API_HASH = "067ca91addf879c1ea548bc37d5d9b98"
-BOT_TOKEN = "8758962250:AAGH-7lH1Yzr0JtdPA2-UnTIdH_qPvgny6Y"
+BOT_TOKEN = "8758962250:AAFIkAuMQ8eDgn7LYkjwi0Gzi50wNCtL2j8"
 ADMIN_ID = 6377932858 
 
 TARGET_USER = "eshnazarov"
