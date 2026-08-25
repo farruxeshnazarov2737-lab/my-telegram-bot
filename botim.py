@@ -28,11 +28,15 @@ app = Flask(__name__)
 def home():
     return 'Bot ishlamoqda!'
 
-def run():
+import threading
+
+def run_http():
     port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', port=port)
 
-Thread(target=run, daemon=True).start()
+# Flask serverini asosiy kodni bloklamaydigan qilib fonda yurgizamiz
+threading.Thread(target=run_http, daemon=True).start()
+
 
 # KONFIGURATSIYA (O'zgaruvchilar Render muhitidan o'qiladi)
 API_ID = int(os.environ.get("API_ID", "0"))
