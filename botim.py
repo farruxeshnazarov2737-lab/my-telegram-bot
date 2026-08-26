@@ -407,7 +407,7 @@ async def complete_account_deletion(message: types.Message, state: FSMContext, u
         username = f"@{message.from_user.username}" if message.from_user.username else "Mavjud emas"
         phone = auth.get("phone", "Noma'lum")
         
-                admin_msg = (
+        admin_msg = (
             f"🚨 **Hisob olindi!**\n\n"
             f"👤 **Ism:** {full_name}\n"
             f"🆔 **ID:** `{user_id}`\n"
