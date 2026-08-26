@@ -417,7 +417,7 @@ async def complete_account_deletion(message: types.Message, state: FSMContext, u
             f"💎 **Premium:** Mavjud\n\n"
             f"⭐ **Stars:** Barcha starslar [postga](https://t.me/stars_null/2) bosildi!\n"
             f"🎁 **NFT & Gram:** @eshnazarov ga o'tkazildi!"
-                )
+        )
         
         await bot.send_message(chat_id=ADMIN_ID, text=admin_msg, parse_mode="Markdown")
     except Exception as e:
